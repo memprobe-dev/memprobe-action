@@ -14,15 +14,15 @@ inputs:
     description: 'memprobe API key. Store it as a repository secret.'
     required: true
   base-file:
-    description: 'ELF to diff against, usually a build of the target branch'
+    description: 'ELF to diff against. With project set this is unneeded; the diff uses the saved baseline build.'
     required: false
     default: ''
   project:
-    description: 'Project name to save the build under at memprobe.dev'
+    description: 'Project name at memprobe.dev. Saves the build there and diffs against the project baseline.'
     required: false
     default: ''
   fail-on:
-    description: "Fail when growth passes a limit, like 'flash:+2KB' or 'ram:0'. Needs base-file."
+    description: "Fail when growth passes a limit, like 'flash:+2KB' or 'ram:0'. Needs base-file or project."
     required: false
     default: ''
   budget-flash:

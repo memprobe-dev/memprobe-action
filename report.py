@@ -2,6 +2,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -45,14 +46,19 @@ def fail(message):
     sys.exit(1)
 
 
-def run_cli(args):
-    proc = subprocess.run(["memprobe", *args, "--json"],
-                          capture_output=True, text=True)
-    try:
-        data = json.loads(proc.stdout)
-    except ValueError:
-        data = None
-    return proc.returncode, data, proc.stderr.strip()
+def run_cli(args, retries=1):
+    for attempt in range(retries + 1):
+        proc = subprocess.run(["memprobe", *args, "--json"],
+                              capture_output=True, text=True)
+        try:
+            data = json.loads(proc.stdout)
+        except ValueError:
+            data = None
+        # a gate failure still produces JSON; no JSON means the call itself
+        # failed, which is worth one retry for transient network errors
+        if data is not None or attempt == retries:
+            return proc.returncode, data, proc.stderr.strip()
+        time.sleep(3)
 
 
 def load_toml_tables(start):
@@ -109,6 +115,8 @@ def render(analysis, regions, check, diff, marker):
     tail = "[memprobe](https://memprobe.dev)"
     if analysis.get("build_id"):
         tail += f" · build {analysis['build_id']}"
+    if diff is not None and diff.get("base_build_id"):
+        tail += f" · compared against build {diff['base_build_id']}"
     lines += ["", f"<sub>{tail}</sub>"]
     return "\n".join(lines)
 
@@ -144,8 +152,12 @@ def post_comment(body, marker):
         return
     api = os.environ.get("GITHUB_API_URL", "https://api.github.com")
     comments_url = f"{api}/repos/{repo}/issues/{number}/comments"
-    existing = gh_request("GET", comments_url + "?per_page=100", token) or []
-    mine = next((c for c in existing if marker in (c.get("body") or "")), None)
+    mine = None
+    for page in range(1, 11):
+        batch = gh_request("GET", f"{comments_url}?per_page=100&page={page}", token) or []
+        mine = next((c for c in batch if marker in (c.get("body") or "")), None)
+        if mine or len(batch) < 100:
+            break
     if mine:
         gh_request("PATCH", f"{api}/repos/{repo}/issues/comments/{mine['id']}",
                    token, {"body": body})
@@ -184,6 +196,26 @@ def main():
     if not file or not os.path.isfile(file):
         fail(f"Firmware file not found: {file or '(no file input)'}")
 
+    # diff runs first: in project mode the server compares against the latest
+    # saved build, which must not be the one analyze saves below
+    diff = None
+    diff_args = None
+    if base:
+        if not os.path.isfile(base):
+            fail(f"Base file not found: {base}")
+        diff_args = ["diff", base, file]
+    elif project:
+        diff_args = ["diff", file, "--project", project]
+    if diff_args:
+        if fail_on:
+            diff_args += ["--fail-on", fail_on]
+        code, diff, err = run_cli(diff_args)
+        if diff is None:
+            if not base and "No builds found" in err:
+                print("No saved builds in the project yet, skipping the size diff.")
+            else:
+                fail(err or "memprobe diff failed.")
+
     args = ["analyze", file]
     if project:
         args += ["--project", project]
@@ -204,17 +236,6 @@ def main():
         code, check, err = run_cli(args)
         if check is None:
             fail(err or "memprobe check failed.")
-
-    diff = None
-    if base:
-        if not os.path.isfile(base):
-            fail(f"Base file not found: {base}")
-        args = ["diff", base, file]
-        if fail_on:
-            args += ["--fail-on", fail_on]
-        code, diff, err = run_cli(args)
-        if diff is None:
-            fail(err or "memprobe diff failed.")
 
     passed = ((check is None or check.get("passed", True)) and
               (diff is None or diff.get("passed", True)))

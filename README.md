@@ -45,9 +45,22 @@ ram   = "320KB"
 
 The action picks it up automatically and fails the job when a budget is exceeded. You can also pass `budget-flash` / `budget-ram` inputs instead of the file.
 
-## Size diff against the target branch
+## Size diff
 
-Build the base branch first, then pass it as `base-file`:
+Set `project` and the report compares each run against the project's baseline build stored at memprobe.dev, so there is nothing extra to build:
+
+```yaml
+      - uses: memprobe-dev/memprobe-action@v1
+        with:
+          file: build/firmware.elf
+          project: my-firmware
+          fail-on: 'flash:+2KB'
+          api-key: ${{ secrets.MEMPROBE_API_KEY }}
+```
+
+By default the baseline is the newest saved build; pin a specific build as the baseline in your project at memprobe.dev to compare against a fixed reference instead. The first run has nothing to compare against and skips the diff.
+
+To compare two local files instead, build the base branch and pass it as `base-file`:
 
 ```yaml
       - name: Build base
@@ -75,9 +88,9 @@ The PR comment then includes the flash/RAM delta and the largest symbol changes.
 |---|---|---|---|
 | `file` | yes | | Path to the firmware ELF. |
 | `api-key` | yes | | memprobe API key. Use a repository secret. |
-| `base-file` | no | | ELF to diff against, usually a build of the target branch. |
-| `project` | no | | Project name to save the build under at memprobe.dev. |
-| `fail-on` | no | | Fail when growth passes a limit, like `flash:+2KB` or `ram:0`. Needs `base-file`. |
+| `base-file` | no | | ELF to diff against. Unneeded when `project` is set. |
+| `project` | no | | Project name at memprobe.dev. Saves the build there and diffs against the project baseline. |
+| `fail-on` | no | | Fail when growth passes a limit, like `flash:+2KB` or `ram:0`. Needs `base-file` or `project`. |
 | `budget-flash` | no | | Max flash, like `512KB`. Overrides `memprobe.toml`. |
 | `budget-ram` | no | | Max RAM, like `128KB`. Overrides `memprobe.toml`. |
 | `comment` | no | `true` | Post or update the PR comment. |
