@@ -1,0 +1,93 @@
+name: 'memprobe firmware size check'
+description: 'Flash/RAM size report, budget gate, and symbol-level diff for ELF firmware on every pull request'
+author: 'memprobe'
+
+branding:
+  icon: 'cpu'
+  color: 'blue'
+
+inputs:
+  file:
+    description: 'Path to the firmware ELF'
+    required: true
+  api-key:
+    description: 'memprobe API key. Store it as a repository secret.'
+    required: true
+  base-file:
+    description: 'ELF to diff against, usually a build of the target branch'
+    required: false
+    default: ''
+  project:
+    description: 'Project name to save the build under at memprobe.dev'
+    required: false
+    default: ''
+  fail-on:
+    description: "Fail when growth passes a limit, like 'flash:+2KB' or 'ram:0'. Needs base-file."
+    required: false
+    default: ''
+  budget-flash:
+    description: 'Max flash, like 512KB. Overrides memprobe.toml.'
+    required: false
+    default: ''
+  budget-ram:
+    description: 'Max RAM, like 128KB. Overrides memprobe.toml.'
+    required: false
+    default: ''
+  comment:
+    description: 'Post or update a PR comment with the report'
+    required: false
+    default: 'true'
+  cli-version:
+    description: 'memprobe package version to install. Defaults to the latest release.'
+    required: false
+    default: ''
+  github-token:
+    description: 'Token used to post the PR comment'
+    required: false
+    default: ${{ github.token }}
+
+outputs:
+  flash:
+    description: 'Flash usage in bytes'
+    value: ${{ steps.report.outputs.flash }}
+  ram:
+    description: 'RAM usage in bytes'
+    value: ${{ steps.report.outputs.ram }}
+  flash-delta:
+    description: 'Flash change in bytes versus base-file, empty when no base-file was given'
+    value: ${{ steps.report.outputs.flash-delta }}
+  ram-delta:
+    description: 'RAM change in bytes versus base-file, empty when no base-file was given'
+    value: ${{ steps.report.outputs.ram-delta }}
+  passed:
+    description: "'true' when no budget or fail-on limit was breached"
+    value: ${{ steps.report.outputs.passed }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Install memprobe
+      shell: bash
+      env:
+        CLI_VERSION: ${{ inputs.cli-version }}
+      run: |
+        if [ -n "$CLI_VERSION" ]; then
+          python3 -m pip install --quiet "memprobe==$CLI_VERSION"
+        else
+          python3 -m pip install --quiet memprobe
+        fi
+
+    - name: Analyze and report
+      id: report
+      shell: bash
+      env:
+        MEMPROBE_API_KEY: ${{ inputs.api-key }}
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        MP_FILE: ${{ inputs.file }}
+        MP_BASE: ${{ inputs.base-file }}
+        MP_PROJECT: ${{ inputs.project }}
+        MP_FAIL_ON: ${{ inputs.fail-on }}
+        MP_BUDGET_FLASH: ${{ inputs.budget-flash }}
+        MP_BUDGET_RAM: ${{ inputs.budget-ram }}
+        MP_COMMENT: ${{ inputs.comment }}
+      run: python3 "${{ github.action_path }}/report.py"
