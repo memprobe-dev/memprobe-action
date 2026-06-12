@@ -11,8 +11,7 @@ TOP_CHANGES = 15
 
 
 def marker_for(file):
-    # one sticky comment per analyzed file, so matrix and multi-image
-    # builds don't overwrite each other
+    # per-file marker so multi-image builds don't overwrite each other's comment
     return f"<!-- memprobe-action:{file} -->"
 
 
@@ -48,14 +47,14 @@ def fail(message):
 
 def run_cli(args, retries=1):
     for attempt in range(retries + 1):
-        proc = subprocess.run(["memprobe", *args, "--json"],
+        # -m through the install interpreter; the console script may not be on PATH
+        proc = subprocess.run([sys.executable, "-m", "memprobe_cli", *args, "--json"],
                               capture_output=True, text=True)
         try:
             data = json.loads(proc.stdout)
         except ValueError:
             data = None
-        # a gate failure still produces JSON; no JSON means the call itself
-        # failed, which is worth one retry for transient network errors
+        # gate failures still produce JSON; no JSON means the call failed
         if data is not None or attempt == retries:
             return proc.returncode, data, proc.stderr.strip()
         time.sleep(3)
@@ -63,10 +62,15 @@ def run_cli(args, retries=1):
 
 def load_toml_tables(start):
     try:
-        from memprobe_cli.budgets import load_budgets, load_regions
-        return load_budgets(start), load_regions(start)
+        from memprobe_cli.budgets import load_budgets, load_regions, load_watch
+        return load_budgets(start), load_regions(start), load_watch(start)
     except Exception:
-        return {}, {}
+        return {}, {}, {}
+
+
+def short_path(path, parts=3):
+    pieces = str(path).replace("\\", "/").split("/")
+    return "/".join(pieces[-parts:]) if len(pieces) > parts else path
 
 
 def render(analysis, regions, check, diff, marker):
@@ -92,7 +96,7 @@ def render(analysis, regions, check, diff, marker):
 
     if check is not None:
         if check.get("passed"):
-            lines += ["", "✅ All budgets passed."]
+            lines += ["", "All budgets passed."]
         else:
             for v in check.get("violations", []):
                 lines += ["", f"❌ {v.get('label', v.get('kind'))} over budget by "
@@ -103,6 +107,12 @@ def render(analysis, regions, check, diff, marker):
         for r in diff.get("regressions", []):
             lines += ["", f"❌ {str(r.get('metric', '')).upper()} grew "
                           f"{human(r.get('delta', 0))} (limit {signed(r.get('limit', 0))})."]
+        file_diffs = diff.get("file_diffs") or []
+        if file_diffs:
+            lines += ["", "| Source file | Change |", "|---|---:|"]
+            for f in file_diffs[:10]:
+                lines.append(f"| `{short_path(f.get('file', ''))}` | "
+                             f"{signed_bytes(f.get('delta', 0))} |")
         changed = [s for s in diff.get("symbol_diffs", []) if s.get("delta")]
         if changed:
             lines += ["", "<details><summary>Largest symbol changes</summary>", "",
@@ -117,6 +127,9 @@ def render(analysis, regions, check, diff, marker):
         tail += f" · build {analysis['build_id']}"
     if diff is not None and diff.get("base_build_id"):
         tail += f" · compared against build {diff['base_build_id']}"
+    sha = os.environ.get("GITHUB_SHA", "")
+    if sha:
+        tail += f" · {sha[:7]}"
     lines += ["", f"<sub>{tail}</sub>"]
     return "\n".join(lines)
 
@@ -196,8 +209,7 @@ def main():
     if not file or not os.path.isfile(file):
         fail(f"Firmware file not found: {file or '(no file input)'}")
 
-    # diff runs first: in project mode the server compares against the latest
-    # saved build, which must not be the one analyze saves below
+    # diff before analyze, so the baseline is not the build analyze saves
     diff = None
     diff_args = None
     if base:
@@ -224,10 +236,10 @@ def main():
         fail(err or "memprobe analyze failed.")
 
     start = Path(file).resolve().parent
-    budgets, regions = load_toml_tables(start)
+    budgets, regions, watch = load_toml_tables(start)
 
     check = None
-    if budget_flash or budget_ram or budgets:
+    if budget_flash or budget_ram or budgets or watch:
         args = ["check", file]
         if budget_flash:
             args += ["--budget-flash", budget_flash]

@@ -38,9 +38,14 @@ flash = "512KB"
 ram   = "128KB"
 
 # Physical part capacity. Adds utilization percentages to the report.
+# Fill from a linker script with: memprobe init --from-ld <script.ld>
 [regions]
 flash = "1MB"
 ram   = "320KB"
+
+# Per-symbol limits. The job fails when a watched symbol grows past one.
+[watch]
+"ui_render" = "8KB"
 ```
 
 The action picks it up automatically and fails the job when a budget is exceeded. You can also pass `budget-flash` / `budget-ram` inputs instead of the file.

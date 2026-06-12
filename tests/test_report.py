@@ -110,3 +110,22 @@ def test_sticky_comment_updates_existing(monkeypatch, tmp_path):
     assert methods == ["GET", "PATCH"]
     assert "/issues/comments/99" in calls[1][1]
     assert calls[1][2] == {"body": marker + "\nnew"}
+
+
+def test_render_file_diff_table():
+    diff = dict(DIFF, file_diffs=[{"file": "app/src/ui/render.c", "delta": 512, "symbols": 1}])
+    body = report.render(ANALYSIS, {}, None, diff, report.marker_for("firmware.elf"))
+    assert "| Source file | Change |" in body
+    assert "`src/ui/render.c`" in body
+    assert "+512" in body
+
+
+def test_render_footer_commit(monkeypatch):
+    monkeypatch.setenv("GITHUB_SHA", "abc1234def5678")
+    body = report.render(ANALYSIS, {}, None, None, report.marker_for("firmware.elf"))
+    assert "· abc1234" in body
+
+
+def test_load_toml_tables_returns_three(tmp_path):
+    budgets, regions, watch = report.load_toml_tables(tmp_path)
+    assert budgets == {} and regions == {} and watch == {}
