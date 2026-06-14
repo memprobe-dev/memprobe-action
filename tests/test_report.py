@@ -51,12 +51,12 @@ def test_render_regions_show_percentages():
 
 def test_render_budget_violation():
     body = report.render(ANALYSIS, {}, CHECK_FAIL, None, report.marker_for("firmware.elf"))
-    assert "❌ Flash over budget by 18.4 KB" in body
+    assert "**Over budget:** Flash by 18.4 KB" in body
 
 
 def test_render_budget_pass():
     body = report.render(ANALYSIS, {}, {"passed": True, "violations": []}, None, report.marker_for("firmware.elf"))
-    assert "✅ All budgets passed." in body
+    assert "All budgets passed." in body
 
 
 def test_render_diff_table():

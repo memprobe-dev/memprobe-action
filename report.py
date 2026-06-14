@@ -99,13 +99,13 @@ def render(analysis, regions, check, diff, marker):
             lines += ["", "All budgets passed."]
         else:
             for v in check.get("violations", []):
-                lines += ["", f"❌ {v.get('label', v.get('kind'))} over budget by "
+                lines += ["", f"**Over budget:** {v.get('label', v.get('kind'))} by "
                               f"{human(v.get('overage', 0))} "
                               f"({human(v.get('actual', 0))} > {human(v.get('budget', 0))})."]
 
     if diff is not None:
         for r in diff.get("regressions", []):
-            lines += ["", f"❌ {str(r.get('metric', '')).upper()} grew "
+            lines += ["", f"**Regression:** {str(r.get('metric', '')).upper()} grew "
                           f"{human(r.get('delta', 0))} (limit {signed(r.get('limit', 0))})."]
         file_diffs = diff.get("file_diffs") or []
         if file_diffs:

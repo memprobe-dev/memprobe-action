@@ -1,6 +1,10 @@
-# memprobe-action
+<p align="center">
+  <img src="logo.png" alt="memprobe" width="84">
+</p>
+<h1 align="center">memprobe-action</h1>
+<p align="center">Firmware size reports on every pull request.</p>
 
-Firmware size reports on every pull request, powered by [memprobe](https://memprobe.dev). Posts a PR comment with flash/RAM totals and symbol-level changes, and fails the job when a memory budget is exceeded.
+Powered by [memprobe](https://memprobe.dev). Posts a PR comment with flash/RAM totals and symbol-level changes, and fails the job when a memory budget is exceeded.
 
 The ELF is parsed on the runner and only section and symbol metadata is sent to the API, the same information `readelf -S` and `nm` print.
 
